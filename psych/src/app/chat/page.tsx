@@ -5,15 +5,9 @@ import { Message } from '@/components/Message';
 import { ChatInput } from '@/components/ChatInput';
 import { FileUpload } from '@/components/FileUpload';
 import { Settings } from '@/components/Settings';
+import { ChatManager, ChatMessage } from '@/utils/chatManager';
+import { MarkdownRenderer } from '@/utils/markdown';
 import { IoSettingsOutline, IoDocumentTextOutline, IoFlash } from 'react-icons/io5';
-
-interface ChatMessage {
-  id: string;
-  content: string;
-  isUser: boolean;
-  thoughts?: string;
-  audioData?: string;
-}
 
 interface UploadedFile {
   uri: string;
@@ -29,7 +23,9 @@ export default function ChatPage() {
   const [currentThoughts, setCurrentThoughts] = useState('');
   const [currentMessage, setCurrentMessage] = useState('');
   const [apiKey, setApiKey] = useState('');
+  const [selectedVoice, setSelectedVoice] = useState('Kore');
   const [showSettings, setShowSettings] = useState(false);
+  const [chatManager, setChatManager] = useState<ChatManager | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const scrollToBottom = () => {
@@ -40,16 +36,23 @@ export default function ChatPage() {
     scrollToBottom();
   }, [messages]);
 
-  // Add welcome message
+  // Initialize chat manager when API key is available
   useEffect(() => {
-    if (messages.length === 0) {
-      setMessages([{
-        id: 'welcome',
-        content: "Hello! I'm Dr. Sarah Chen, your AI mental health companion. I'm here to provide support and guidance using evidence-based therapeutic approaches. You can upload psychology documents to enhance our session and configure your API key in settings. How are you feeling today?",
-        isUser: false
-      }]);
+    if (apiKey && !chatManager) {
+      console.log('🔄 Initializing chat manager with API key');
+      const manager = new ChatManager(apiKey);
+      const session = manager.createNewSession(selectedVoice);
+      setChatManager(manager);
+      setMessages(session.messages);
     }
-  }, [messages.length]);
+  }, [apiKey, chatManager, selectedVoice]);
+
+  // Update voice in chat manager
+  useEffect(() => {
+    if (chatManager) {
+      chatManager.updateVoice(selectedVoice);
+    }
+  }, [selectedVoice, chatManager]);
 
   const handleFileUpload = async (file: File) => {
     if (!apiKey) {
@@ -77,19 +80,43 @@ export default function ChatPage() {
       const uploadedFile = await response.json();
       setUploadedFiles(prev => [...prev, uploadedFile]);
       
-      // Add confirmation message
-      setMessages(prev => [...prev, {
-        id: Date.now().toString(),
-        content: `Document "${uploadedFile.displayName}" has been uploaded successfully and will inform our conversation with the latest research and clinical insights.`,
-        isUser: false
-      }]);
+      // Add file to ChatManager session
+      if (chatManager) {
+        chatManager.addUploadedFile(uploadedFile);
+        
+        const confirmationMessage: ChatMessage = {
+          id: `upload_${Date.now()}`,
+          content: `Document "${uploadedFile.displayName}" has been uploaded successfully and will inform our conversation with the latest research and clinical insights.`,
+          isUser: false,
+          timestamp: Date.now()
+        };
+        
+        // Update the current session with confirmation message
+        const updatedSession = chatManager.getCurrentSession();
+        if (updatedSession) {
+          updatedSession.messages.push(confirmationMessage);
+          setMessages([...updatedSession.messages]);
+        }
+      }
     } catch (error) {
       console.error('File upload error:', error);
-      setMessages(prev => [...prev, {
-        id: Date.now().toString(),
-        content: 'Sorry, there was an error uploading your document. Please check your API key in settings and try again.',
-        isUser: false
-      }]);
+      
+      // Add error message using ChatManager for consistency
+      if (chatManager) {
+        const errorMessage: ChatMessage = {
+          id: `error_${Date.now()}`,
+          content: 'Sorry, there was an error uploading your document. Please check your API key in settings and try again.',
+          isUser: false,
+          timestamp: Date.now()
+        };
+        
+        // Update the current session with error message
+        const updatedSession = chatManager.getCurrentSession();
+        if (updatedSession) {
+          updatedSession.messages.push(errorMessage);
+          setMessages([...updatedSession.messages]);
+        }
+      }
     } finally {
       setIsUploading(false);
     }
@@ -101,116 +128,58 @@ export default function ChatPage() {
       return;
     }
 
-    console.log('💬 Sending message:', content);
-    console.log('💬 Current conversation history length:', messages.length);
+    if (!chatManager) {
+      console.error('💬 No chat manager available');
+      return;
+    }
 
+    console.log('💬 Sending message via new chat system:', content);
+    
+    // Add user message immediately to UI
     const userMessage: ChatMessage = {
-      id: Date.now().toString(),
+      id: `user_${Date.now()}`,
       content,
       isUser: true,
+      timestamp: Date.now()
     };
 
-    // Add user message immediately
-    const updatedMessages = [...messages, userMessage];
-    setMessages(updatedMessages);
+    setMessages(prev => [...prev, userMessage]);
     setIsLoading(true);
     setCurrentThoughts('');
     setCurrentMessage('');
 
-    console.log('💬 Updated conversation history length:', updatedMessages.length);
-
     try {
-      const response = await fetch('/api/chat', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-API-Key': apiKey,
+      // Get uploaded files from current session
+      const sessionFiles = chatManager.getCurrentSession()?.uploadedFiles || [];
+      
+      // Send message through chat manager with streaming callbacks
+      const aiMessage = await chatManager.sendMessage(
+        content,
+        sessionFiles,
+        // onThought callback
+        (thought: string) => {
+          setCurrentThoughts(prev => prev + thought);
         },
-        body: JSON.stringify({
-          messages: updatedMessages, // Use the updated messages array
-          uploadedFiles,
-        }),
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to get response');
-      }
-
-      const reader = response.body?.getReader();
-      const decoder = new TextDecoder();
-
-      if (!reader) {
-        throw new Error('No reader available');
-      }
-
-      let done = false;
-      let thoughts = '';
-      let message = '';
-
-      console.log('💬 Starting to read streaming response...');
-
-      while (!done) {
-        const { value, done: readerDone } = await reader.read();
-        done = readerDone;
-
-        if (value) {
-          const chunk = decoder.decode(value);
-          const lines = chunk.split('\n');
-
-          for (const line of lines) {
-            if (line.startsWith('data: ')) {
-              try {
-                const data = JSON.parse(line.slice(6));
-                
-                console.log('💬 Received streaming data:', data.type, data.content ? data.content.substring(0, 50) + '...' : 'no content');
-                
-                if (data.type === 'thought') {
-                  thoughts += data.content;
-                  setCurrentThoughts(thoughts);
-                } else if (data.type === 'message') {
-                  message += data.content;
-                  setCurrentMessage(message);
-                } else if (data.type === 'complete') {
-                  console.log('💬 Complete message received with audio:', !!data.audioData);
-                  
-                  // Final message received
-                  const aiMessage: ChatMessage = {
-                    id: (Date.now() + 1).toString(),
-                    content: data.message || message,
-                    isUser: false,
-                    thoughts: data.thoughts || thoughts,
-                    audioData: data.audioData,
-                  };
-                  
-                  console.log('💬 Adding AI message to conversation:', {
-                    id: aiMessage.id,
-                    contentLength: aiMessage.content.length,
-                    hasThoughts: !!aiMessage.thoughts,
-                    hasAudio: !!aiMessage.audioData
-                  });
-                  
-                  setMessages(prev => {
-                    const newMessages = [...prev, aiMessage];
-                    console.log('💬 New total message count:', newMessages.length);
-                    return newMessages;
-                  });
-                  setCurrentThoughts('');
-                  setCurrentMessage('');
-                }
-              } catch (e) {
-                console.error('Error parsing SSE data:', e);
-              }
-            }
-          }
+        // onMessage callback  
+        (messageChunk: string) => {
+          setCurrentMessage(prev => prev + messageChunk);
         }
-      }
+      );
+
+      // Update messages with the complete AI response
+      setMessages(prev => [...prev, aiMessage]);
+      setCurrentThoughts('');
+      setCurrentMessage('');
+
     } catch (error) {
-      console.error('Chat error:', error);
-      setMessages(prev => [...prev, {
-        id: (Date.now() + 1).toString(),
+      console.error('💬 Chat error:', error);
+      const errorMessage: ChatMessage = {
+        id: `error_${Date.now()}`,
         content: 'Sorry, I encountered an error processing your message. Please check your API key in settings and try again.',
         isUser: false,
-      }]);
+        timestamp: Date.now()
+      };
+      setMessages(prev => [...prev, errorMessage]);
     } finally {
       setIsLoading(false);
     }
@@ -294,7 +263,7 @@ export default function ChatPage() {
                         AI Thoughts (Live)
                       </div>
                       <div className="text-sm text-gray-700 leading-relaxed">
-                        <pre className="whitespace-pre-wrap font-mono text-xs">{currentThoughts}</pre>
+                        <MarkdownRenderer content={currentThoughts} />
                       </div>
                     </div>
                   )}
@@ -325,6 +294,8 @@ export default function ChatPage() {
         isOpen={showSettings}
         onClose={() => setShowSettings(false)}
         onApiKeyChange={setApiKey}
+        selectedVoice={selectedVoice}
+        onVoiceChange={setSelectedVoice}
       />
     </div>
   );

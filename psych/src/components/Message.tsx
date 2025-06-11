@@ -31,7 +31,7 @@ export const Message: React.FC<MessageProps> = ({ content, isUser, thoughts, aud
   const [selectedVoice, setSelectedVoice] = useState('Kore');
   const [isGeneratingTTS, setIsGeneratingTTS] = useState(false);
   const [generatedAudio, setGeneratedAudio] = useState<string | null>(null);
-  const [showAudioModal, setShowAudioModal] = useState(false);
+  const [showAudioInModal, setShowAudioInModal] = useState(false);
 
   // Debug logging
   useEffect(() => {
@@ -94,21 +94,38 @@ export const Message: React.FC<MessageProps> = ({ content, isUser, thoughts, aud
         const data = await response.json();
         console.log('🎵 TTS generation successful, audio data received:', !!data.audioData);
         setGeneratedAudio(data.audioData);
-        setShowAudioModal(true);
+        setShowAudioInModal(true);
       } else {
         const errorData = await response.json();
         console.error('🎵 TTS generation failed:', errorData);
+        alert('Failed to generate audio. Please try again.');
       }
     } catch (error) {
       console.error('🎵 TTS generation error:', error);
+      alert('Error generating audio. Please check your connection and try again.');
     } finally {
       setIsGeneratingTTS(false);
-      setShowTTSModal(false);
     }
+  };
+
+  const handleCloseModal = () => {
+    setShowTTSModal(false);
+    setShowAudioInModal(false);
+    setGeneratedAudio(null);
   };
 
   return (
     <div className={`flex ${isUser ? 'justify-end' : 'justify-start'} mb-6`}>
+      {/* AI Avatar */}
+      {!isUser && (
+        <div className="flex-shrink-0 mr-3">
+          <div className="w-10 h-10 rounded-full bg-gradient-to-br from-pink-500 to-rose-600 flex items-center justify-center shadow-lg">
+            <span className="text-white font-semibold text-sm">DC</span>
+          </div>
+          <div className="text-xs text-gray-500 mt-1 text-center">Dr. Chen</div>
+        </div>
+      )}
+
       <div className={`max-w-4xl w-full ${
         isUser 
           ? 'bg-gradient-to-br from-pink-500 to-rose-600 text-white shadow-lg shadow-pink-500/25' 
@@ -135,11 +152,7 @@ export const Message: React.FC<MessageProps> = ({ content, isUser, thoughts, aud
             {showThoughts && (
               <div className="mt-3 p-4 bg-pink-50/80 backdrop-blur-sm rounded-xl border-l-4 border-pink-400">
                 <div className="text-sm text-pink-800 leading-relaxed">
-                  {hasMarkdown(thoughts) ? (
-                    <MarkdownRenderer content={thoughts} />
-                  ) : (
-                    <pre className="whitespace-pre-wrap font-mono text-xs">{thoughts}</pre>
-                  )}
+                  <MarkdownRenderer content={thoughts} />
                 </div>
               </div>
             )}
@@ -176,14 +189,24 @@ export const Message: React.FC<MessageProps> = ({ content, isUser, thoughts, aud
           )}
         </div>
 
-        {!isUser && (audioData || generatedAudio) && (
-          <AudioPlayer 
-            audioData={audioData || generatedAudio!} 
-            showModal={showAudioModal && !audioData}
-            onCloseModal={() => setShowAudioModal(false)}
-          />
+        {!isUser && (audioData || generatedAudio) && !showTTSModal && (
+          <div className="mt-4">
+            <AudioPlayer 
+              audioData={audioData || generatedAudio!} 
+            />
+          </div>
         )}
       </div>
+
+      {/* User Avatar */}
+      {isUser && (
+        <div className="flex-shrink-0 ml-3">
+          <div className="w-10 h-10 rounded-full bg-gradient-to-br from-gray-500 to-gray-600 flex items-center justify-center shadow-lg">
+            <span className="text-white font-semibold text-sm">You</span>
+          </div>
+          <div className="text-xs text-gray-500 mt-1 text-center">Client</div>
+        </div>
+      )}
 
       {/* TTS Voice Selection Modal */}
       {showTTSModal && (

@@ -6,9 +6,17 @@ interface SettingsProps {
   isOpen: boolean;
   onClose: () => void;
   onApiKeyChange: (apiKey: string) => void;
+  selectedVoice: string;
+  onVoiceChange: (voice: string) => void;
 }
 
-export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose, onApiKeyChange }) => {
+export const Settings: React.FC<SettingsProps> = ({ 
+  isOpen, 
+  onClose, 
+  onApiKeyChange, 
+  selectedVoice, 
+  onVoiceChange 
+}) => {
   const [apiKey, setApiKey] = useState('');
   const [isVisible, setIsVisible] = useState(false);
 
@@ -82,6 +90,34 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose, onApiKeyCha
             </div>
             <p className="text-xs text-gray-500 mt-2">
               Your API key is stored locally in cookies and never sent to our servers.
+            </p>
+          </div>
+
+          {/* Voice Selection */}
+          <div className="space-y-3">
+            <label className="block text-sm font-medium text-gray-700">
+              Default TTS Voice
+            </label>
+            <select
+              value={selectedVoice}
+              onChange={(e) => onVoiceChange(e.target.value)}
+              className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-gray-400 bg-white/90 backdrop-blur-sm text-gray-900"
+            >
+              <option value="Kore">Kore - Firm</option>
+              <option value="Zephyr">Zephyr - Bright</option>
+              <option value="Puck">Puck - Upbeat</option>
+              <option value="Charon">Charon - Informative</option>
+              <option value="Fenrir">Fenrir - Excitable</option>
+              <option value="Leda">Leda - Youthful</option>
+              <option value="Orus">Orus - Firm</option>
+              <option value="Aoede">Aoede - Breezy</option>
+              <option value="Callirrhoe">Callirrhoe - Easy-going</option>
+              <option value="Autonoe">Autonoe - Bright</option>
+              <option value="Enceladus">Enceladus - Breathy</option>
+              <option value="Iapetus">Iapetus - Clear</option>
+            </select>
+            <p className="text-xs text-gray-500">
+              This voice will be used for all AI responses.
             </p>
           </div>
 

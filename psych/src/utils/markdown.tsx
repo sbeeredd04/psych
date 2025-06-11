@@ -12,7 +12,6 @@ import { FiCopy, FiCheck } from 'react-icons/fi';
 export const MarkdownRenderer: React.FC<{ content: string }> = ({ content }) => {
   return (
     <ReactMarkdown
-      className="markdown-body"
       remarkPlugins={[remarkGfm, remarkMath]}
       rehypePlugins={[rehypeKatex, rehypeRaw]}
       components={{

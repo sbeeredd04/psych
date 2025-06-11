@@ -4,15 +4,11 @@ import { IoPlayOutline, IoPauseOutline, IoVolumeHighOutline, IoCloseOutline, IoD
 interface AudioPlayerProps {
   audioData: string; // base64 encoded audio data
   isGenerating?: boolean;
-  showModal?: boolean;
-  onCloseModal?: () => void;
 }
 
 export const AudioPlayer: React.FC<AudioPlayerProps> = ({ 
   audioData, 
-  isGenerating = false, 
-  showModal = false, 
-  onCloseModal 
+  isGenerating = false
 }) => {
   const [isPlaying, setIsPlaying] = useState(false);
   const [duration, setDuration] = useState(0);
@@ -33,48 +29,61 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
         }
         const byteArray = new Uint8Array(byteNumbers);
         
-        // Detect audio format from the first few bytes
-        let mimeType = 'audio/wav'; // default
+        // For Gemini TTS API, the response is typically AAC audio
+        // Try multiple MIME types for better browser compatibility
+        const mimeTypes = [
+          'audio/aac',
+          'audio/mp4',
+          'audio/mpeg',
+          'audio/wav',
+          'audio/webm',
+          'audio/ogg'
+        ];
         
-        // Check for MP3 header (ID3 or MPEG)
-        if (byteArray[0] === 0xFF && (byteArray[1] & 0xE0) === 0xE0) {
-          mimeType = 'audio/mpeg';
-          console.log('🎵 AudioPlayer: Detected MP3 format');
-        }
-        // Check for WAV header
-        else if (byteArray[0] === 0x52 && byteArray[1] === 0x49 && byteArray[2] === 0x46 && byteArray[3] === 0x46) {
-          mimeType = 'audio/wav';
-          console.log('🎵 AudioPlayer: Detected WAV format');
-        }
-        // Check for OGG header
-        else if (byteArray[0] === 0x4F && byteArray[1] === 0x67 && byteArray[2] === 0x67 && byteArray[3] === 0x53) {
-          mimeType = 'audio/ogg';
-          console.log('🎵 AudioPlayer: Detected OGG format');
-        }
-        // Check for WebM header
-        else if (byteArray[0] === 0x1A && byteArray[1] === 0x45 && byteArray[2] === 0xDF && byteArray[3] === 0xA3) {
-          mimeType = 'audio/webm';
-          console.log('🎵 AudioPlayer: Detected WebM format');
-        }
-        // For Gemini TTS, it's likely AAC in MP4 container
-        else {
-          mimeType = 'audio/mp4';
-          console.log('🎵 AudioPlayer: Using MP4/AAC format as fallback');
+        let audioUrl: string | null = null;
+        
+        // Try to create a playable audio URL
+        for (const mimeType of mimeTypes) {
+          try {
+            const blob = new Blob([byteArray], { type: mimeType });
+            const url = URL.createObjectURL(blob);
+            
+            // Test if the browser can potentially play this type
+            const audio = document.createElement('audio');
+            const canPlay = audio.canPlayType(mimeType);
+            
+            if (canPlay !== '') {
+              audioUrl = url;
+              console.log(`🎵 AudioPlayer: Using MIME type ${mimeType}, can play: ${canPlay}`);
+              break;
+            } else {
+              URL.revokeObjectURL(url);
+            }
+          } catch (e) {
+            // Continue to next MIME type
+          }
         }
         
-        const blob = new Blob([byteArray], { type: mimeType });
-        const audioUrl = URL.createObjectURL(blob);
+        // Fallback: use audio/mp4 if nothing else worked
+        if (!audioUrl) {
+          const blob = new Blob([byteArray], { type: 'audio/mp4' });
+          audioUrl = URL.createObjectURL(blob);
+          console.log('🎵 AudioPlayer: Using fallback audio/mp4 format');
+        }
         
-        console.log(`🎵 AudioPlayer: Created blob with MIME type ${mimeType}, blob size:`, blob.size);
+        console.log(`🎵 AudioPlayer: Created audio URL`);
         
         audioRef.current.src = audioUrl;
         audioRef.current.load();
         
         return () => {
-          URL.revokeObjectURL(audioUrl);
+          if (audioUrl) {
+            URL.revokeObjectURL(audioUrl);
+          }
         };
       } catch (error) {
         console.error('🎵 AudioPlayer: Error setting up audio:', error);
+        setAudioError('Failed to process audio data');
       }
     }
   }, [audioData]);
@@ -120,15 +129,24 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
     
     let errorMessage = 'Audio playback failed';
     if (error?.code === 4) {
-      errorMessage = 'Audio format not supported by browser';
+      errorMessage = 'Audio format not supported. Try downloading the file.';
     } else if (error?.code === 3) {
-      errorMessage = 'Audio decoding failed';
+      errorMessage = 'Audio decoding failed. The audio data may be corrupted.';
     } else if (error?.code === 2) {
       errorMessage = 'Network error loading audio';
+    } else if (error?.code === 1) {
+      errorMessage = 'Audio loading was aborted';
     }
     
     setAudioError(errorMessage);
     setIsPlaying(false);
+  };
+
+  const handleRetry = () => {
+    setAudioError(null);
+    if (audioRef.current) {
+      audioRef.current.load();
+    }
   };
 
   const handleCanPlay = () => {
@@ -198,6 +216,13 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
           <div className="text-sm text-red-700 font-medium">Audio Error</div>
           <div className="text-xs text-red-600">{audioError}</div>
         </div>
+        <button
+          onClick={handleRetry}
+          className="p-2 rounded-lg bg-red-100 hover:bg-red-200 text-red-600 hover:text-red-800 transition-all duration-200 text-xs font-medium"
+          title="Retry Loading"
+        >
+          Retry
+        </button>
         <button
           onClick={handleDownload}
           className="p-2 rounded-lg bg-red-100 hover:bg-red-200 text-red-600 hover:text-red-800 transition-all duration-200"
