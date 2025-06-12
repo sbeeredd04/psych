@@ -15,9 +15,11 @@ interface UploadedFile {
   displayName: string;
 }
 
+
 export default function ChatPage() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [isGeneratingAudio, setIsGeneratingAudio] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([]);
   const [currentThoughts, setCurrentThoughts] = useState('');
@@ -27,6 +29,33 @@ export default function ChatPage() {
   const [showSettings, setShowSettings] = useState(false);
   const [chatManager, setChatManager] = useState<ChatManager | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  // Helper function to validate messages
+  const isValidMessage = (message: any): message is ChatMessage => {
+    return message && 
+           typeof message === 'object' && 
+           typeof message.id === 'string' && 
+           typeof message.content === 'string' && 
+           typeof message.isUser === 'boolean' &&
+           typeof message.timestamp === 'number';
+  };
+
+  // Helper function to safely add messages
+  const addMessage = (message: ChatMessage) => {
+    if (isValidMessage(message)) {
+      setMessages(prev => [...prev, message]);
+    } else {
+      console.error('💬 Attempted to add invalid message:', message);
+    }
+  };
+
+  // Helper function to safely update messages
+  const updateMessages = (updateFn: (prev: ChatMessage[]) => ChatMessage[]) => {
+    setMessages(prev => {
+      const updated = updateFn(prev);
+      return updated.filter(isValidMessage);
+    });
+  };
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -43,7 +72,7 @@ export default function ChatPage() {
       const manager = new ChatManager(apiKey);
       const session = manager.createNewSession(selectedVoice);
       setChatManager(manager);
-      setMessages(session.messages);
+      setMessages(session.messages.filter(isValidMessage));
     }
   }, [apiKey, chatManager, selectedVoice]);
 
@@ -95,7 +124,7 @@ export default function ChatPage() {
         const updatedSession = chatManager.getCurrentSession();
         if (updatedSession) {
           updatedSession.messages.push(confirmationMessage);
-          setMessages([...updatedSession.messages]);
+          setMessages([...updatedSession.messages.filter(isValidMessage)]);
         }
       }
     } catch (error) {
@@ -114,7 +143,7 @@ export default function ChatPage() {
         const updatedSession = chatManager.getCurrentSession();
         if (updatedSession) {
           updatedSession.messages.push(errorMessage);
-          setMessages([...updatedSession.messages]);
+          setMessages([...updatedSession.messages.filter(isValidMessage)]);
         }
       }
     } finally {
@@ -143,7 +172,7 @@ export default function ChatPage() {
       timestamp: Date.now()
     };
 
-    setMessages(prev => [...prev, userMessage]);
+    addMessage(userMessage);
     setIsLoading(true);
     setCurrentThoughts('');
     setCurrentMessage('');
@@ -151,6 +180,9 @@ export default function ChatPage() {
     try {
       // Get uploaded files from current session
       const sessionFiles = chatManager.getCurrentSession()?.uploadedFiles || [];
+      
+      // Variable to track if audio generation was triggered
+      let audioGenerationTriggered = false;
       
       // Send message through chat manager with streaming callbacks
       const aiMessage = await chatManager.sendMessage(
@@ -163,13 +195,39 @@ export default function ChatPage() {
         // onMessage callback  
         (messageChunk: string) => {
           setCurrentMessage(prev => prev + messageChunk);
+        },
+        // onAudioGenerationStart callback
+        (aiMessage: ChatMessage) => {
+          console.log('💬 Audio generation started');
+          audioGenerationTriggered = true;
+          setIsGeneratingAudio(true);
+          setIsLoading(false); // Stop general loading, start audio loading
+          setCurrentThoughts('');
+          setCurrentMessage('');
+          // Add the message to UI when audio generation starts
+          addMessage(aiMessage);
+        },
+        // onAudioGenerationComplete callback
+        (aiMessage: ChatMessage, audioData: string | null) => {
+          console.log('💬 Audio generation complete:', !!audioData);
+          setIsGeneratingAudio(false);
+          // Force re-render to show the audio player
+          updateMessages(prev => prev.map(msg => {
+            if (!isValidMessage(msg)) {
+              console.warn('💬 Found invalid message during audio update:', msg);
+              return msg; // Keep as-is if invalid
+            }
+            return msg.id === aiMessage.id ? { ...msg, audioData: audioData || undefined } : msg;
+          }));
         }
       );
 
-      // Update messages with the complete AI response
-      setMessages(prev => [...prev, aiMessage]);
-      setCurrentThoughts('');
-      setCurrentMessage('');
+      // If audio generation callbacks weren't called (no TTS), update messages normally
+      if (!audioGenerationTriggered) {
+        addMessage(aiMessage);
+        setCurrentThoughts('');
+        setCurrentMessage('');
+      }
 
     } catch (error) {
       console.error('💬 Chat error:', error);
@@ -179,7 +237,8 @@ export default function ChatPage() {
         isUser: false,
         timestamp: Date.now()
       };
-      setMessages(prev => [...prev, errorMessage]);
+      addMessage(errorMessage);
+      setIsGeneratingAudio(false);
     } finally {
       setIsLoading(false);
     }
@@ -195,87 +254,123 @@ export default function ChatPage() {
         <div className="absolute top-2/3 right-1/4 w-2 h-2 bg-gray-200 rounded-full opacity-40 animate-pulse"></div>
       </div>
 
-      {/* Header */}
-      <div className="bg-white/90 backdrop-blur-sm shadow-lg shadow-gray-500/10 border-b border-gray-200/30 sticky top-0 z-40 relative">
-        <div className="max-w-6xl mx-auto flex items-center justify-between p-6">
-          <div className="flex items-center gap-4">
-            <div className="w-12 h-12 bg-gradient-to-br from-gray-500 to-gray-600 rounded-2xl flex items-center justify-center shadow-lg shadow-gray-500/25">
-              <IoFlash className="text-white text-lg" />
-            </div>
-            <div>
-              <h1 className="text-xl font-bold text-gray-800">
-                PsychAI Session
-              </h1>
-              <p className="text-sm text-gray-600">
-                Confidential AI-powered mental health support
-              </p>
-            </div>
-          </div>
+      {/* Floating Header */}
+      <div className="fixed top-4 left-1/2 transform -translate-x-1/2 z-50">
+        <div className="bg-white/80 backdrop-blur-md shadow-lg border border-gray-200/50 rounded-full px-4 py-2 flex items-center gap-4">
+          <button
+            onClick={() => window.location.href = '/'}
+            className="p-2 hover:bg-gray-100/50 rounded-full transition-colors"
+            title="Go Home"
+          >
+            <IoFlash className="w-4 h-4 text-gray-700" />
+          </button>
           
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2">
+            <span className="text-sm font-medium text-gray-800">Psych</span>
             {uploadedFiles.length > 0 && (
-              <div className="flex items-center gap-2 px-3 py-2 bg-gray-100/70 backdrop-blur-sm rounded-xl border border-gray-200/30">
-                <IoDocumentTextOutline className="w-4 h-4 text-gray-600" />
-                <span className="text-sm text-gray-700 font-medium">
-                  {uploadedFiles.length} document{uploadedFiles.length > 1 ? 's' : ''} loaded
-                </span>
+              <div className="flex items-center gap-1 px-2 py-1 bg-gray-100/70 rounded-full">
+                <IoDocumentTextOutline className="w-3 h-3 text-gray-600" />
+                <span className="text-xs text-gray-700">{uploadedFiles.length}</span>
               </div>
             )}
-            
-            <button
-              onClick={() => setShowSettings(true)}
-              className="p-3 rounded-xl bg-gradient-to-r from-gray-100/70 to-gray-100/70 hover:from-gray-200/70 hover:to-gray-200/70 transition-all duration-200 shadow-lg shadow-gray-500/10 hover:shadow-gray-500/20 backdrop-blur-sm border border-gray-200/30"
-            >
-              <IoSettingsOutline className="w-5 h-5 text-gray-600" />
-            </button>
           </div>
+          
+          <button
+            onClick={() => setShowSettings(true)}
+            className="p-2 hover:bg-gray-100/50 rounded-full transition-colors"
+            title="Settings"
+          >
+            <IoSettingsOutline className="w-4 h-4 text-gray-600" />
+          </button>
         </div>
       </div>
 
       {/* Main Content */}
-      <div className="max-w-6xl mx-auto flex flex-col h-[calc(100vh-100px)]">
-        {/* File Upload */}
-        <div className="p-6 pb-0">
-          <FileUpload onFileUpload={handleFileUpload} isUploading={isUploading} />
+      <div className="max-w-4xl mx-auto flex flex-col h-screen pt-20 pb-4">
+        {/* Compact File Upload */}
+        <div className="px-6 pb-3">
+          <div className="bg-white/60 backdrop-blur-sm border border-gray-200/50 rounded-xl p-3">
+            {uploadedFiles.length > 0 ? (
+              <div>
+                <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center gap-2">
+                    <IoDocumentTextOutline className="w-4 h-4 text-green-600" />
+                    <span className="text-xs text-green-700 font-medium">
+                      {uploadedFiles.length} Document{uploadedFiles.length > 1 ? 's' : ''} Loaded as Knowledge Source
+                    </span>
+                  </div>
+                  <FileUpload onFileUpload={handleFileUpload} isUploading={isUploading} />
+                </div>
+                
+                <div className="space-y-2">
+                  {uploadedFiles.map((file, index) => (
+                    <div 
+                      key={index} 
+                      className="flex items-center gap-2 p-2 bg-green-50/80 rounded-lg border border-green-200/50"
+                    >
+                      <IoDocumentTextOutline className="w-3 h-3 text-green-600 flex-shrink-0" />
+                      <span className="text-xs text-green-800 font-medium truncate flex-1">
+                        {file.displayName}
+                      </span>
+                      <div className="w-2 h-2 bg-green-500 rounded-full flex-shrink-0" title="Active Source"></div>
+                    </div>
+                  ))}
+                </div>
+                
+                <div className="mt-2 text-xs text-green-600/80">
+                  These documents are enhancing Dr. Chen's responses with specialized knowledge
+                </div>
+              </div>
+            ) : (
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <IoDocumentTextOutline className="w-4 h-4 text-gray-500" />
+                  <span className="text-xs text-gray-600">Upload psychology documents to enhance responses</span>
+                </div>
+                <FileUpload onFileUpload={handleFileUpload} isUploading={isUploading} />
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Chat Messages */}
-        <div className="flex-1 p-6 overflow-y-auto">
-          <div className="space-y-6">
-            {messages.map((message) => (
+        <div className="flex-1 px-6 overflow-y-auto">
+          <div className="space-y-4">
+            {messages.map((message, index) => (
               <Message
                 key={message.id}
                 content={message.content}
                 isUser={message.isUser}
                 thoughts={message.thoughts}
                 audioData={message.audioData}
+                isGeneratingAudio={isGeneratingAudio && !message.isUser && index === messages.length - 1}
               />
             ))}
             
             {/* Show streaming thoughts and message */}
             {(currentThoughts || currentMessage) && (
               <div className="flex justify-start">
-                <div className="max-w-4xl w-full bg-white/90 backdrop-blur-sm text-gray-800 border border-gray-200/50 shadow-lg shadow-gray-500/10 rounded-2xl p-6 transition-all duration-300">
+                <div className="max-w-3xl w-full bg-white/90 backdrop-blur-sm text-gray-800 border border-gray-200/50 shadow-sm rounded-2xl p-4 transition-all duration-300">
                   {currentThoughts && (
-                    <div className="mb-4 p-4 bg-gray-50/80 backdrop-blur-sm rounded-xl border-l-4 border-gray-400">
-                      <div className="text-sm text-gray-800 font-medium mb-2 flex items-center gap-2">
-                        <IoFlash className="w-4 h-4" />
+                    <div className="mb-3 p-3 bg-gray-50/80 backdrop-blur-sm rounded-xl border-l-4 border-gray-400">
+                      <div className="text-xs text-gray-800 font-medium mb-2 flex items-center gap-2">
+                        <IoFlash className="w-3 h-3" />
                         AI Thoughts (Live)
                       </div>
-                      <div className="text-sm text-gray-700 leading-relaxed">
+                      <div className="text-xs text-gray-700 leading-relaxed">
                         <MarkdownRenderer content={currentThoughts} />
                       </div>
                     </div>
                   )}
                   {currentMessage && (
-                    <div className="prose prose-lg max-w-none prose-gray">
-                      <div className="whitespace-pre-wrap leading-relaxed">{currentMessage}</div>
+                    <div className="prose prose-sm max-w-none prose-gray">
+                      <div className="whitespace-pre-wrap leading-relaxed text-sm">{currentMessage}</div>
                     </div>
                   )}
                   {isLoading && !currentMessage && (
                     <div className="flex items-center gap-3 text-gray-600">
-                      <div className="w-5 h-5 border-2 border-gray-500 border-t-transparent rounded-full animate-spin"></div>
-                      <span className="italic">Dr. Chen is carefully considering your message...</span>
+                      <div className="w-4 h-4 border-2 border-gray-500 border-t-transparent rounded-full animate-spin"></div>
+                      <span className="italic text-sm">Dr. Chen is carefully considering your message...</span>
                     </div>
                   )}
                 </div>
@@ -286,7 +381,9 @@ export default function ChatPage() {
         </div>
 
         {/* Chat Input */}
-        <ChatInput onSendMessage={handleSendMessage} isLoading={isLoading} />
+        <div className="px-6 pt-3">
+          <ChatInput onSendMessage={handleSendMessage} isLoading={isLoading} isGeneratingAudio={isGeneratingAudio} />
+        </div>
       </div>
 
       {/* Settings Modal */}

@@ -27,64 +27,39 @@ export const FileUpload: React.FC<FileUploadProps> = ({ onFileUpload, isUploadin
   };
 
   return (
-    <div className="mb-6">
-      <div
-        className={`relative p-8 border-2 border-dashed rounded-2xl transition-all duration-300 backdrop-blur-sm ${
-          dragOver
-            ? 'border-gray-400 bg-gray-50/80 shadow-lg shadow-gray-500/20'
-            : 'border-gray-200 bg-white/50 hover:border-gray-300 hover:bg-gray-50/60'
+    <div className="relative">
+      <input
+        type="file"
+        accept=".pdf"
+        onChange={handleFileSelect}
+        className="hidden"
+        id="file-upload"
+        disabled={isUploading}
+      />
+      
+      <label
+        htmlFor="file-upload"
+        className={`inline-flex items-center gap-2 px-3 py-2 rounded-lg transition-all duration-200 cursor-pointer text-xs font-medium border ${
+          isUploading
+            ? 'bg-gray-100 text-gray-500 cursor-not-allowed border-gray-200'
+            : 'bg-white hover:bg-gray-50 text-gray-700 border-gray-200 hover:border-gray-300 shadow-sm hover:shadow'
         }`}
         onDrop={handleDrop}
         onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
         onDragLeave={() => setDragOver(false)}
       >
-        <div className="text-center">
-          <div className="flex justify-center mb-4">
-            {isUploading ? (
-              <div className="w-12 h-12 border-4 border-gray-200 border-t-gray-500 rounded-full animate-spin"></div>
-            ) : (
-              <IoCloudUploadOutline className={`w-12 h-12 transition-colors ${
-                dragOver 
-                  ? 'text-gray-500' 
-                  : 'text-gray-400'
-              }`} />
-            )}
-          </div>
-
-          <h3 className="text-lg font-semibold text-gray-900 mb-2">
-            {isUploading ? 'Uploading Document...' : 'Upload Psychology Documents'}
-          </h3>
-          
-          <p className="text-sm text-gray-600 mb-6 max-w-md mx-auto">
-            Upload psychology research papers, textbooks, or clinical guidelines (PDF format) to enhance Dr. Chen's knowledge base for your session.
-          </p>
-
-          <input
-            type="file"
-            accept=".pdf"
-            onChange={handleFileSelect}
-            className="hidden"
-            id="file-upload"
-            disabled={isUploading}
-          />
-          
-          <label
-            htmlFor="file-upload"
-            className={`inline-flex items-center gap-3 px-6 py-3 rounded-xl transition-all duration-200 cursor-pointer font-medium ${
-              isUploading
-                ? 'bg-gray-200 text-gray-500 cursor-not-allowed'
-                : 'bg-gradient-to-r from-gray-500 to-gray-600 hover:from-gray-600 hover:to-gray-700 text-white shadow-lg shadow-gray-500/25 hover:shadow-gray-500/40 hover:scale-105'
-            }`}
-          >
-            <IoDocumentTextOutline className="w-5 h-5" />
-            {isUploading ? 'Processing...' : 'Choose PDF File'}
-          </label>
-          
-          <p className="mt-4 text-xs text-gray-500">
-            Or drag and drop a PDF file here • Max size: 50MB
-          </p>
-        </div>
-      </div>
+        {isUploading ? (
+          <>
+            <div className="w-3 h-3 border-2 border-gray-400 border-t-transparent rounded-full animate-spin"></div>
+            Uploading...
+          </>
+        ) : (
+          <>
+            <IoCloudUploadOutline className="w-3 h-3" />
+            Upload PDF
+          </>
+        )}
+      </label>
     </div>
   );
 };

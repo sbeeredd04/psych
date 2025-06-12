@@ -8,6 +8,7 @@ interface MessageProps {
   isUser: boolean;
   thoughts?: string;
   audioData?: string;
+  isGeneratingAudio?: boolean;
 }
 
 const TTS_VOICES = [
@@ -25,7 +26,7 @@ const TTS_VOICES = [
   { name: 'Iapetus', description: 'Clear' },
 ];
 
-export const Message: React.FC<MessageProps> = ({ content, isUser, thoughts, audioData }) => {
+export const Message: React.FC<MessageProps> = ({ content, isUser, thoughts, audioData, isGeneratingAudio = false }) => {
   const [showThoughts, setShowThoughts] = useState(false);
   const [showTTSModal, setShowTTSModal] = useState(false);
   const [selectedVoice, setSelectedVoice] = useState('Kore');
@@ -117,33 +118,33 @@ export const Message: React.FC<MessageProps> = ({ content, isUser, thoughts, aud
   };
 
   return (
-    <div className={`flex ${isUser ? 'justify-end' : 'justify-start'} mb-6`}>
+    <div className={`flex ${isUser ? 'justify-end' : 'justify-start'} mb-4`}>
       {/* AI Avatar */}
       {!isUser && (
         <div className="flex-shrink-0 mr-3">
-          <div className="w-10 h-10 rounded-full bg-gradient-to-br from-pink-500 to-rose-600 flex items-center justify-center shadow-lg">
-            <span className="text-white font-semibold text-sm">DC</span>
+          <div className="w-8 h-8 rounded-full bg-gradient-to-br from-pink-500 to-rose-600 flex items-center justify-center shadow-md">
+            <span className="text-white font-semibold text-xs">DC</span>
           </div>
           <div className="text-xs text-gray-500 mt-1 text-center">Dr. Chen</div>
         </div>
       )}
 
-      <div className={`max-w-4xl w-full ${
+      <div className={`${
         isUser 
-          ? 'bg-gradient-to-br from-pink-500 to-rose-600 text-white shadow-lg shadow-pink-500/25' 
-          : 'bg-white/90 backdrop-blur-sm text-gray-900 border border-pink-200/30 shadow-lg shadow-pink-500/10'
-      } rounded-2xl p-6 transition-all duration-300 hover:shadow-xl ${isUser ? 'hover:shadow-pink-500/30' : 'hover:shadow-pink-500/15'}`}>
+          ? 'max-w-sm bg-gradient-to-br from-pink-500 to-rose-600 text-white shadow-md' 
+          : 'max-w-3xl w-full bg-white/90 backdrop-blur-sm text-gray-900 border border-pink-200/30 shadow-sm'
+      } rounded-2xl p-4 transition-all duration-300 hover:shadow-md ${isUser ? 'hover:shadow-pink-500/30' : 'hover:shadow-pink-500/15'}`}>
         
         {!isUser && thoughts && (
-          <div className="mb-4">
+          <div className="mb-3">
             <button
               onClick={() => setShowThoughts(!showThoughts)}
-              className="flex items-center gap-2 text-sm text-pink-600 hover:text-pink-800 transition-colors group"
+              className="flex items-center gap-2 text-xs text-pink-600 hover:text-pink-800 transition-colors group"
             >
               {showThoughts ? (
-                <IoChevronUpOutline className="w-4 h-4 transition-transform group-hover:scale-110" />
+                <IoChevronUpOutline className="w-3 h-3 transition-transform group-hover:scale-110" />
               ) : (
-                <IoChevronDownOutline className="w-4 h-4 transition-transform group-hover:scale-110" />
+                <IoChevronDownOutline className="w-3 h-3 transition-transform group-hover:scale-110" />
               )}
               <span className="font-medium">AI Thoughts</span>
               <span className="text-xs opacity-75">
@@ -152,8 +153,8 @@ export const Message: React.FC<MessageProps> = ({ content, isUser, thoughts, aud
             </button>
             
             {showThoughts && (
-              <div className="mt-3 p-4 bg-pink-50/80 backdrop-blur-sm rounded-xl border-l-4 border-pink-400">
-                <div className="text-sm text-pink-800 leading-relaxed">
+              <div className="mt-2 p-3 bg-pink-50/80 backdrop-blur-sm rounded-xl border-l-4 border-pink-400">
+                <div className="text-xs text-pink-800 leading-relaxed">
                   <MarkdownRenderer content={thoughts} />
                 </div>
               </div>
@@ -162,11 +163,11 @@ export const Message: React.FC<MessageProps> = ({ content, isUser, thoughts, aud
         )}
         
         <div className="flex items-start justify-between gap-3">
-          <div className={`prose prose-lg max-w-none flex-1 ${isUser ? 'prose-invert' : 'prose-gray'}`}>
+          <div className={`${isUser ? 'prose-sm prose-invert' : 'prose-sm prose-gray'} max-w-none flex-1`}>
             {hasMarkdown(content) ? (
               <MarkdownRenderer content={content} />
             ) : (
-              <div className="whitespace-pre-wrap leading-relaxed">{content}</div>
+              <div className={`whitespace-pre-wrap leading-relaxed ${isUser ? 'text-sm' : 'text-sm'}`}>{content}</div>
             )}
           </div>
 
@@ -182,9 +183,9 @@ export const Message: React.FC<MessageProps> = ({ content, isUser, thoughts, aud
                 disabled={isGeneratingTTS}
               >
                 {isGeneratingTTS ? (
-                  <div className="w-4 h-4 border-2 border-pink-600 border-t-transparent rounded-full animate-spin"></div>
+                  <div className="w-3 h-3 border-2 border-pink-600 border-t-transparent rounded-full animate-spin"></div>
                 ) : (
-                  <IoVolumeHighOutline className="w-4 h-4" />
+                  <IoVolumeHighOutline className="w-3 h-3" />
                 )}
               </button>
             </div>
@@ -192,10 +193,27 @@ export const Message: React.FC<MessageProps> = ({ content, isUser, thoughts, aud
         </div>
 
         {!isUser && (audioData || generatedAudio) && !showTTSModal && !showAudioInModal && (
-          <div className="mt-4">
+          <div className="mt-3">
             <AudioPlayer 
               audioData={audioData || generatedAudio!} 
             />
+          </div>
+        )}
+
+        {!isUser && isGeneratingAudio && !audioData && !generatedAudio && (
+          <div className="mt-3">
+            <div className="flex items-center gap-3 p-3 bg-gradient-to-r from-pink-50/50 to-rose-50/50 rounded-xl border border-pink-200/50 backdrop-blur-sm">
+              <div className="w-6 h-6 rounded-full bg-pink-200 flex items-center justify-center">
+                <div className="w-3 h-3 border-2 border-pink-600 border-t-transparent rounded-full animate-spin"></div>
+              </div>
+              <span className="text-xs text-pink-700 font-medium">Generating audio response...</span>
+              <div className="flex-1"></div>
+              <div className="flex space-x-1">
+                <div className="w-1.5 h-1.5 bg-pink-400 rounded-full animate-pulse"></div>
+                <div className="w-1.5 h-1.5 bg-pink-400 rounded-full animate-pulse" style={{ animationDelay: '0.1s' }}></div>
+                <div className="w-1.5 h-1.5 bg-pink-400 rounded-full animate-pulse" style={{ animationDelay: '0.2s' }}></div>
+              </div>
+            </div>
           </div>
         )}
       </div>
@@ -203,8 +221,8 @@ export const Message: React.FC<MessageProps> = ({ content, isUser, thoughts, aud
       {/* User Avatar */}
       {isUser && (
         <div className="flex-shrink-0 ml-3">
-          <div className="w-10 h-10 rounded-full bg-gradient-to-br from-gray-500 to-gray-600 flex items-center justify-center shadow-lg">
-            <span className="text-white font-semibold text-sm">You</span>
+          <div className="w-8 h-8 rounded-full bg-gradient-to-br from-gray-500 to-gray-600 flex items-center justify-center shadow-md">
+            <span className="text-white font-semibold text-xs">You</span>
           </div>
           <div className="text-xs text-gray-500 mt-1 text-center">Client</div>
         </div>

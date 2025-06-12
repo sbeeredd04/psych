@@ -74,7 +74,9 @@ export class ChatManager {
     message: string, 
     uploadedFiles: any[] = [],
     onThought?: (thought: string) => void,
-    onMessage?: (messageChunk: string) => void
+    onMessage?: (messageChunk: string) => void,
+    onAudioGenerationStart?: (aiMessage: ChatMessage) => void,
+    onAudioGenerationComplete?: (aiMessage: ChatMessage, audioData: string | null) => void
   ): Promise<ChatMessage> {
     if (!this.currentSession) {
       throw new Error('No active chat session');
@@ -129,28 +131,37 @@ export class ChatManager {
       console.log('💬 Streaming complete. Response length:', fullResponse.length);
       console.log('💬 Thoughts length:', fullThoughts.length);
 
-      // Generate TTS audio
-      let audioData: string | null = null;
-      try {
-        console.log('💬 Generating TTS for response with voice:', this.currentSession.selectedVoice);
-        audioData = await this.generateTTS(fullResponse, this.currentSession.selectedVoice);
-        console.log('💬 TTS generated successfully:', !!audioData);
-      } catch (error) {
-        console.error('💬 TTS generation failed:', error);
-      }
-
-      // Create AI message
+      // Create initial AI message without audio
       const aiMessage: ChatMessage = {
         id: `ai_${Date.now()}`,
         content: fullResponse,
         isUser: false,
         thoughts: fullThoughts,
-        audioData: audioData || undefined,
         timestamp: Date.now()
       };
 
-      // Add to session
+      // Add to session first (without audio)
       this.currentSession.messages.push(aiMessage);
+
+      // Generate TTS audio
+      let audioData: string | null = null;
+      try {
+        console.log('💬 Starting TTS generation for response with voice:', this.currentSession.selectedVoice);
+        onAudioGenerationStart?.(aiMessage);
+        
+        audioData = await this.generateTTS(fullResponse, this.currentSession.selectedVoice);
+        console.log('💬 TTS generated successfully:', !!audioData);
+        
+        // Update the message with audio data
+        if (audioData) {
+          aiMessage.audioData = audioData;
+        }
+        
+        onAudioGenerationComplete?.(aiMessage, audioData);
+      } catch (error) {
+        console.error('💬 TTS generation failed:', error);
+        onAudioGenerationComplete?.(aiMessage, null);
+      }
       
       console.log('💬 Total messages in session:', this.currentSession.messages.length);
       return aiMessage;

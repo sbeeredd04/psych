@@ -1,5 +1,25 @@
 import Link from "next/link";
 import { IoFlash, IoHeartOutline, IoShieldCheckmarkOutline, IoDocumentTextOutline, IoSparklesOutline, IoMicOutline, IoCodeSlashOutline } from 'react-icons/io5';
+import { Metadata } from "next";
+
+export const metadata: Metadata = {
+  title: "Home - AI-Powered Mental Health Support",
+  description: "Welcome to PsychAI - Your compassionate AI mental health companion. Get started with evidence-based therapeutic support, document understanding, and personalized guidance for your mental wellness journey.",
+  keywords: ["AI therapy", "mental health support", "psychology AI", "therapeutic guidance", "CBT", "DBT", "mental wellness", "AI counseling"],
+  openGraph: {
+    title: "PsychAI - Your AI Mental Health Companion",
+    description: "Get personalized mental health support through evidence-based psychological techniques with advanced AI capabilities.",
+    url: "https://psychai.app",
+    type: "website",
+  },
+  twitter: {
+    title: "PsychAI - Your AI Mental Health Companion",
+    description: "Get personalized mental health support through evidence-based psychological techniques with advanced AI capabilities.",
+  },
+  alternates: {
+    canonical: "https://psychai.app",
+  },
+};
 
 export default function Home() {
   return (
