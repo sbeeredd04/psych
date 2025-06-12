@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { IoPlayOutline, IoPauseOutline, IoVolumeHighOutline, IoCloseOutline, IoDownloadOutline } from 'react-icons/io5';
+import { IoPlayOutline, IoPauseOutline, IoVolumeHighOutline, IoDownloadOutline } from 'react-icons/io5';
 
 interface AudioPlayerProps {
   audioData: string; // base64 encoded audio data
@@ -15,13 +15,19 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
   const [currentTime, setCurrentTime] = useState(0);
   const [audioError, setAudioError] = useState<string | null>(null);
   const audioRef = useRef<HTMLAudioElement>(null);
+  const [audioUrl, setAudioUrl] = useState<string | null>(null);
 
   useEffect(() => {
     if (audioData && audioRef.current) {
       console.log('🎵 AudioPlayer: Setting up audio with data length:', audioData.length);
       
       try {
-        // Convert base64 to blob URL with proper MIME type
+        // Clean up previous audio URL
+        if (audioUrl) {
+          URL.revokeObjectURL(audioUrl);
+        }
+
+        // Convert base64 to Uint8Array
         const byteCharacters = atob(audioData);
         const byteNumbers = new Array(byteCharacters.length);
         for (let i = 0; i < byteCharacters.length; i++) {
@@ -29,64 +35,81 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
         }
         const byteArray = new Uint8Array(byteNumbers);
         
-        // For Gemini TTS API, the response is typically AAC audio
-        // Try multiple MIME types for better browser compatibility
-        const mimeTypes = [
-          'audio/aac',
-          'audio/mp4',
-          'audio/mpeg',
-          'audio/wav',
-          'audio/webm',
-          'audio/ogg'
-        ];
+        // According to Gemini TTS documentation, the output is PCM audio data
+        // We need to create a proper WAV file with headers
+        const sampleRate = 24000; // Gemini TTS default sample rate
+        const numChannels = 1; // Mono audio
+        const bitsPerSample = 16;
         
-        let audioUrl: string | null = null;
+        // Create WAV file header
+        const wavHeader = createWavHeader(byteArray.length, sampleRate, numChannels, bitsPerSample);
         
-        // Try to create a playable audio URL
-        for (const mimeType of mimeTypes) {
-          try {
-            const blob = new Blob([byteArray], { type: mimeType });
-            const url = URL.createObjectURL(blob);
-            
-            // Test if the browser can potentially play this type
-            const audio = document.createElement('audio');
-            const canPlay = audio.canPlayType(mimeType);
-            
-            if (canPlay !== '') {
-              audioUrl = url;
-              console.log(`🎵 AudioPlayer: Using MIME type ${mimeType}, can play: ${canPlay}`);
-              break;
-            } else {
-              URL.revokeObjectURL(url);
-            }
-          } catch (e) {
-            // Continue to next MIME type
-          }
-        }
+        // Combine header and audio data
+        const wavData = new Uint8Array(wavHeader.length + byteArray.length);
+        wavData.set(wavHeader, 0);
+        wavData.set(byteArray, wavHeader.length);
         
-        // Fallback: use audio/mp4 if nothing else worked
-        if (!audioUrl) {
-          const blob = new Blob([byteArray], { type: 'audio/mp4' });
-          audioUrl = URL.createObjectURL(blob);
-          console.log('🎵 AudioPlayer: Using fallback audio/mp4 format');
-        }
+        // Create blob as proper WAV file
+        const blob = new Blob([wavData], { type: 'audio/wav' });
+        const url = URL.createObjectURL(blob);
         
-        console.log(`🎵 AudioPlayer: Created audio URL`);
+        console.log('🎵 AudioPlayer: Created WAV audio URL with proper headers');
         
-        audioRef.current.src = audioUrl;
+        setAudioUrl(url);
+        audioRef.current.src = url;
         audioRef.current.load();
         
-        return () => {
-          if (audioUrl) {
-            URL.revokeObjectURL(audioUrl);
-          }
-        };
       } catch (error) {
         console.error('🎵 AudioPlayer: Error setting up audio:', error);
         setAudioError('Failed to process audio data');
       }
     }
+
+    // Cleanup function
+    return () => {
+      if (audioUrl) {
+        URL.revokeObjectURL(audioUrl);
+      }
+    };
   }, [audioData]);
+
+  // Helper function to create WAV file header
+  const createWavHeader = (dataLength: number, sampleRate: number, numChannels: number, bitsPerSample: number) => {
+    const bytesPerSample = bitsPerSample / 8;
+    const byteRate = sampleRate * numChannels * bytesPerSample;
+    const blockAlign = numChannels * bytesPerSample;
+    const chunkSize = 36 + dataLength;
+    
+    const header = new ArrayBuffer(44);
+    const view = new DataView(header);
+    
+    // RIFF chunk descriptor
+    const writeString = (offset: number, string: string) => {
+      for (let i = 0; i < string.length; i++) {
+        view.setUint8(offset + i, string.charCodeAt(i));
+      }
+    };
+    
+    writeString(0, 'RIFF'); // ChunkID
+    view.setUint32(4, chunkSize, true); // ChunkSize
+    writeString(8, 'WAVE'); // Format
+    
+    // fmt sub-chunk
+    writeString(12, 'fmt '); // Subchunk1ID
+    view.setUint32(16, 16, true); // Subchunk1Size
+    view.setUint16(20, 1, true); // AudioFormat (PCM)
+    view.setUint16(22, numChannels, true); // NumChannels
+    view.setUint32(24, sampleRate, true); // SampleRate
+    view.setUint32(28, byteRate, true); // ByteRate
+    view.setUint16(32, blockAlign, true); // BlockAlign
+    view.setUint16(34, bitsPerSample, true); // BitsPerSample
+    
+    // data sub-chunk
+    writeString(36, 'data'); // Subchunk2ID
+    view.setUint32(40, dataLength, true); // Subchunk2Size
+    
+    return new Uint8Array(header);
+  };
 
   const togglePlayPause = () => {
     if (audioRef.current && !audioError) {
@@ -163,12 +186,24 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
           byteNumbers[i] = byteCharacters.charCodeAt(i);
         }
         const byteArray = new Uint8Array(byteNumbers);
-        const blob = new Blob([byteArray], { type: 'audio/mp4' });
+        
+        // Create proper WAV file with headers (same as in useEffect)
+        const sampleRate = 24000;
+        const numChannels = 1;
+        const bitsPerSample = 16;
+        const wavHeader = createWavHeader(byteArray.length, sampleRate, numChannels, bitsPerSample);
+        
+        // Combine header and audio data
+        const wavData = new Uint8Array(wavHeader.length + byteArray.length);
+        wavData.set(wavHeader, 0);
+        wavData.set(byteArray, wavHeader.length);
+        
+        const blob = new Blob([wavData], { type: 'audio/wav' });
         const url = URL.createObjectURL(blob);
         
         const a = document.createElement('a');
         a.href = url;
-        a.download = `psych-ai-audio-${Date.now()}.mp4`;
+        a.download = `psych-ai-audio-${Date.now()}.wav`;
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);
@@ -292,25 +327,6 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
       </button>
     </div>
   );
-
-  if (showModal) {
-    return (
-      <div className="fixed inset-0 bg-black/30 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-        <div className="bg-white/95 backdrop-blur-sm rounded-2xl shadow-2xl border border-gray-200/50 max-w-md w-full p-6">
-          <div className="flex items-center justify-between mb-6">
-            <h3 className="text-lg font-semibold text-gray-900">Audio Generated</h3>
-            <button
-              onClick={onCloseModal}
-              className="p-2 rounded-lg hover:bg-gray-100 transition-colors"
-            >
-              <IoCloseOutline className="w-5 h-5 text-gray-500" />
-            </button>
-          </div>
-          {playerContent}
-        </div>
-      </div>
-    );
-  }
 
   return playerContent;
 };

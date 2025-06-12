@@ -94,7 +94,8 @@ export const Message: React.FC<MessageProps> = ({ content, isUser, thoughts, aud
         const data = await response.json();
         console.log('🎵 TTS generation successful, audio data received:', !!data.audioData);
         setGeneratedAudio(data.audioData);
-        setShowAudioInModal(true);
+        setShowTTSModal(false); // Close voice selection modal
+        setShowAudioInModal(true); // Show audio player modal
       } else {
         const errorData = await response.json();
         console.error('🎵 TTS generation failed:', errorData);
@@ -111,6 +112,7 @@ export const Message: React.FC<MessageProps> = ({ content, isUser, thoughts, aud
   const handleCloseModal = () => {
     setShowTTSModal(false);
     setShowAudioInModal(false);
+    // Only clear generated audio if we're fully closing, not keeping in message
     setGeneratedAudio(null);
   };
 
@@ -189,7 +191,7 @@ export const Message: React.FC<MessageProps> = ({ content, isUser, thoughts, aud
           )}
         </div>
 
-        {!isUser && (audioData || generatedAudio) && !showTTSModal && (
+        {!isUser && (audioData || generatedAudio) && !showTTSModal && !showAudioInModal && (
           <div className="mt-4">
             <AudioPlayer 
               audioData={audioData || generatedAudio!} 
@@ -259,6 +261,49 @@ export const Message: React.FC<MessageProps> = ({ content, isUser, thoughts, aud
                 ) : (
                   'Generate Speech'
                 )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Audio Player Modal */}
+      {showAudioInModal && generatedAudio && (
+        <div className="fixed inset-0 bg-black/30 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white/95 backdrop-blur-sm rounded-2xl shadow-2xl border border-gray-200/50 max-w-md w-full p-6">
+            <div className="flex items-center justify-between mb-6">
+              <h3 className="text-lg font-semibold text-gray-900">Audio Generated</h3>
+              <button
+                onClick={handleCloseModal}
+                className="p-2 rounded-lg hover:bg-gray-100 transition-colors"
+              >
+                <IoChevronUpOutline className="w-5 h-5 text-gray-500" />
+              </button>
+            </div>
+            
+            <div className="mb-4">
+              <AudioPlayer 
+                audioData={generatedAudio} 
+              />
+            </div>
+            
+            <div className="flex gap-3">
+              <button
+                onClick={handleCloseModal}
+                className="flex-1 px-4 py-2 text-gray-600 border border-gray-300 rounded-xl hover:bg-gray-50 transition-colors"
+              >
+                Close
+              </button>
+              <button
+                onClick={() => {
+                  // Keep the audio in the message and close modal
+                  setShowTTSModal(false);
+                  setShowAudioInModal(false);
+                  // Don't clear generatedAudio so it shows in the message
+                }}
+                className="flex-1 px-4 py-2 bg-pink-500 hover:bg-pink-600 text-white rounded-xl transition-colors"
+              >
+                Keep in Message
               </button>
             </div>
           </div>
